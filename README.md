@@ -55,12 +55,29 @@ Set the Anthropic API key environment variable:
     export ANTHROPIC_API_KEY="your-api-key-here"
     ```
 
-### 4. Run the Server
-Launch the FastAPI development server:
+### 4. Run Frontend and Backend Together (Recommended)
+You can start both the backend FastAPI server and frontend Vite server together with a single command from the project root:
+```bash
+npm run dev
+```
+This command runs a pre-start check to ensure that port `8000` (backend) and port `5173` (frontend) are free, and then runs uvicorn and vite in parallel, prefixing their console logs clearly in a single terminal.
+
+### 5. Running Servers Individually (Fallback)
+If you prefer to start them manually in separate terminals, or if the combined script is not available:
+
+#### A. Backend Server:
 ```bash
 uvicorn app.main:app --reload
 ```
-The server will start at `http://127.0.0.1:8000`.
+This starts the backend at `http://127.0.0.1:8000`.
+
+#### B. Frontend Server:
+Navigate to the `frontend/` directory and run:
+```bash
+npm run dev
+```
+This starts the frontend at `http://localhost:5173`.
+
 
 ---
 

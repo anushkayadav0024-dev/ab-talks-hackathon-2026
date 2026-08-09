@@ -10,6 +10,14 @@ class InterviewSession(BaseModel):
     history: List[Dict[str, str]] = Field(default_factory=list)
     completed: bool = False
     feedback: Optional[Dict[str, Any]] = None
+    evaluations: Dict[int, Dict[str, Any]] = Field(default_factory=dict)
+    current_day: Optional[int] = None
+    current_topic: Optional[str] = None
+    previous_question: Optional[str] = None
+    previous_answer: Optional[str] = None
+    answer_evaluation: Optional[str] = None
+    knowledge_signal: Optional[Dict[str, Any]] = None
+    next_question_intent: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True

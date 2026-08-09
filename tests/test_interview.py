@@ -49,7 +49,7 @@ def test_all_candidates_plans():
             assert isinstance(item["objectives"], list)
 
 # 2. Mocked offline test for 8-turn interview lifecycle
-async def mock_call_llm(candidate, plan, questions_asked, days_covered, history):
+async def mock_call_llm(candidate, plan, questions_asked, days_covered, history, evaluations=None):
     # Find next day in the plan to focus on
     day_idx = len(days_covered) % len(plan) if plan else 0
     current_day = plan[day_idx]["day"] if plan else None
