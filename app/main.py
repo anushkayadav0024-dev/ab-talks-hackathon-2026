@@ -28,6 +28,7 @@ allowed_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://ab-talks-hackathon-2026-cq355nwdv-hackathon-f62e.vercel.app",
 ]
 
 allow_all = False
