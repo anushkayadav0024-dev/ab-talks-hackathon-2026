@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from typing import Dict, List, Any, Optional
-from anthropic import AsyncAnthropic
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
@@ -373,11 +373,11 @@ async def call_llm(
     evaluations: Optional[Dict[int, Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
-    Call the Claude Fable 5 model to get the next interview turn.
+    Call the Google Gemini model (gemini-2.0-flash) to get the next interview turn.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("ANTHROPIC_API_KEY environment variable is not set. Using local personalized question generator.")
+        logger.warning("GEMINI_API_KEY environment variable is not set. Using local personalized question generator.")
         
         # Filter assistant messages to determine how many questions have been asked
         interviewer_turns = [msg for msg in history if msg["role"] == "assistant"]
@@ -603,33 +603,40 @@ async def call_llm(
         days_covered_list=", ".join([f"Day {d}" for d in days_covered]) if days_covered else "None yet",
     )
 
-    # Format messages for Anthropic API
-    anthropic_messages = []
+    # Format messages for Gemini API
+    gemini_messages = []
     for msg in history:
-        # Map user/assistant to Anthropic roles
-        role = "user" if msg["role"] == "user" else "assistant"
-        anthropic_messages.append({"role": role, "content": msg["content"]})
+        # Map user/assistant to Gemini roles
+        role = "user" if msg["role"] == "user" else "model"
+        gemini_messages.append({
+            "role": role,
+            "parts": [msg["content"]]
+        })
 
     # If the history is empty, add a starting prompt to kick off the conversation
-    if not anthropic_messages:
-        # In Anthropic API, the conversation must start with a user message or we can just send a system instruction
-        # to ask the first question. Since we need to get the first reply, we can either pass an empty list of messages
-        # and rely on the model or supply a user message representing the candidate starting the interview.
-        # Let's supply a virtual candidate prompt: "Hi, I am ready to start the interview."
-        anthropic_messages.append({"role": "user", "content": "Hi, I am ready to start the interview."})
-
-    client = AsyncAnthropic(api_key=api_key)
+    if not gemini_messages:
+        gemini_messages.append({
+            "role": "user",
+            "parts": ["Hi, I am ready to start the interview."]
+        })
 
     try:
-        response = await client.messages.create(
-            model="claude-fable-5",
-            max_tokens=4000,
-            system=system_prompt,
-            messages=anthropic_messages,
-            temperature=0.7
+        # Configure Google GenAI SDK
+        genai.configure(api_key=api_key)
+        
+        # Initialize model with system instruction and JSON output constraint
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            generation_config={
+                "temperature": 0.7,
+                "response_mime_type": "application/json"
+            },
+            system_instruction=system_prompt
         )
         
-        raw_content = response.content[0].text
+        response = await model.generate_content_async(contents=gemini_messages)
+        
+        raw_content = response.text
         logger.info(f"Raw LLM response: {raw_content}")
         
         parsed_response = extract_json(raw_content)
