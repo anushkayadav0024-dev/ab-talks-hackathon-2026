@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Interview Agent Backend")
 
+frontend_url = os.environ.get("FRONTEND_URL")
 frontend_port = os.environ.get("FRONTEND_PORT", "5173")
 allowed_origins = [
     f"http://localhost:{frontend_port}",
@@ -29,10 +30,16 @@ allowed_origins = [
     "http://127.0.0.1:3000",
 ]
 
+allow_all = False
+if frontend_url:
+    allowed_origins.extend([origin.strip() for origin in frontend_url.split(",") if origin.strip()])
+else:
+    allow_all = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all else allowed_origins,
+    allow_credentials=not allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )
