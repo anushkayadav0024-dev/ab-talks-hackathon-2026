@@ -626,7 +626,7 @@ async def call_llm(
         
         # Initialize model with system instruction and JSON output constraint
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-1.5-flash",
             generation_config={
                 "temperature": 0.7,
                 "response_mime_type": "application/json"
