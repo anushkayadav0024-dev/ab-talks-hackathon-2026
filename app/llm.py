@@ -373,7 +373,7 @@ async def call_llm(
     evaluations: Optional[Dict[int, Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
-    Call the Google Gemini model (gemini-1.5-flash) to get the next interview turn.
+    Call the Google Gemini model (gemini-1.5-flash-latest) to get the next interview turn.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
