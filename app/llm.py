@@ -1,11 +1,57 @@
 import os
 import json
 import logging
+import httpx
+import asyncio
 from typing import Dict, List, Any, Optional
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Pydantic Schemas for Gemini Response Validation
+class LLMSignalModel(BaseModel):
+    understood: List[str] = Field(default_factory=list)
+    missing: List[str] = Field(default_factory=list)
+    misconceptions: List[str] = Field(default_factory=list)
+    evidence: str = ""
+
+class LLMEvaluationModel(BaseModel):
+    classification: str = "adequate"
+    signal: LLMSignalModel = Field(default_factory=LLMSignalModel)
+    nextQuestionIntent: str = ""
+
+class LLMDayBreakdownModel(BaseModel):
+    day: int
+    title: str
+    assessment: str = ""
+
+class LLMComparisonModel(BaseModel):
+    day: int
+    title: str
+    predicted: str = "Core"
+    evidence: str = ""
+    assessment: str = "Confirmed"
+    gaps: List[str] = Field(default_factory=list)
+    strengths: List[str] = Field(default_factory=list)
+    next_actions: List[str] = Field(default_factory=list)
+
+class LLMFeedbackModel(BaseModel):
+    summary: str = "Completed the technical interview across multiple curriculum topics."
+    strengths: List[str] = Field(default_factory=list)
+    gaps: List[str] = Field(default_factory=list)
+    next: List[str] = Field(default_factory=list)
+    breakdown: Optional[List[LLMDayBreakdownModel]] = None
+    readiness: Optional[str] = "Interview Ready"
+    comparisons: Optional[List[LLMComparisonModel]] = None
+
+class LLMResponseModel(BaseModel):
+    reply: str = "I'm sorry, I encountered a technical issue. Let's continue. Can you tell me more about your recent project?"
+    done: bool = False
+    focus_day: Optional[int] = None
+    evaluation: Optional[LLMEvaluationModel] = None
+    feedback: Optional[LLMFeedbackModel] = None
 
 # System Prompt Template
 SYSTEM_PROMPT_TEMPLATE = """You are an expert AI Technical Interviewer conducting a personalized technical interview for a graduate of a 31-day AI engineering cohort.
@@ -628,34 +674,96 @@ async def call_llm(
         )
 
     try:
-        # Configure Google GenAI SDK Client
-        client = genai.Client(api_key=api_key)
+        # Initialize Client with 30s timeout configured on Client level
+        client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=30000))
         
-        # Call Gemini model asynchronously
-        response = await client.aio.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=gemini_messages,
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                response_mime_type="application/json",
-                system_instruction=system_prompt,
-            )
+        # Enforce strict response schema using types.GenerateContentConfig
+        config = types.GenerateContentConfig(
+            temperature=0.7,
+            response_mime_type="application/json",
+            system_instruction=system_prompt,
+            response_schema=LLMResponseModel,
         )
         
-        raw_content = response.text
-        logger.info(f"Raw LLM response: {raw_content}")
-        
-        parsed_response = extract_json(raw_content)
-        return parsed_response
-        
+        raw_content = None
+        try:
+            # First attempt
+            response = await client.aio.models.generate_content(
+                model="gemini-3.5-flash",
+                contents=gemini_messages,
+                config=config
+            )
+            raw_content = response.text
+            logger.info(f"Raw LLM response: {raw_content}")
+            
+            # Validate using Pydantic
+            validated = LLMResponseModel.model_validate_json(raw_content)
+            return validated.model_dump()
+            
+        except ValidationError as val_err:
+            logger.warning(f"Initial LLM response validation failed: {val_err}. Retrying with correction prompt...")
+            
+            # Create a retry history with correction prompt
+            correction_messages = list(gemini_messages)
+            if raw_content:
+                correction_messages.append(
+                    types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=raw_content)]
+                    )
+                )
+            correction_messages.append(
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=(
+                        f"Your last response failed JSON schema validation: {val_err}. "
+                        "Please return the complete, corrected JSON exactly matching the requested schema. "
+                        "Ensure all required fields (like 'strengths' and 'next_actions' lists inside comparisons items) are populated."
+                    ))]
+                )
+            )
+            
+            # Retry attempt
+            retry_response = await client.aio.models.generate_content(
+                model="gemini-3.5-flash",
+                contents=correction_messages,
+                config=config
+            )
+            raw_content = retry_response.text
+            logger.info(f"Retry raw LLM response: {raw_content}")
+            
+            validated = LLMResponseModel.model_validate_json(raw_content)
+            return validated.model_dump()
+            
+    except (asyncio.TimeoutError, httpx.TimeoutException) as timeout_err:
+        logger.error(f"Gemini API call timed out (timeout=30s): {timeout_err}", exc_info=True)
+        # Return fallback JSON response on timeout
+        return {
+            "reply": "I'm sorry, I encountered a technical issue. Let's continue. Can you tell me more about your recent project?",
+            "done": False,
+            "focus_day": None,
+            "feedback": None
+        }
     except Exception as e:
         logger.error("Error calling Gemini API:", exc_info=True)
         if hasattr(e, 'status_code'):
             logger.error(f"Gemini API status code: {e.status_code}")
         elif hasattr(e, 'code'):
             logger.error(f"Gemini API error code: {e.code}")
+        if hasattr(e, 'message'):
+            logger.error(f"Gemini API error message: {e.message}")
         
-        # Return a fallback JSON response on error
+        # Wrap final parsing/processing in try/except so if it still fails after retry, return a partial/degraded response instead of a 500
+        # If we have raw_content, try a manual extraction & Pydantic dict validation repair
+        if raw_content:
+            try:
+                logger.info("Attempting manual extraction and repair of JSON...")
+                data = extract_json(raw_content)
+                validated = LLMResponseModel.model_validate(data)
+                return validated.model_dump()
+            except Exception as repair_err:
+                logger.error(f"JSON repair failed: {repair_err}", exc_info=True)
+
         return {
             "reply": "I'm sorry, I encountered a technical issue. Let's continue. Can you tell me more about your recent project?",
             "done": False,

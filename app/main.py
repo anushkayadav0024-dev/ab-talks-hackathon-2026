@@ -29,6 +29,8 @@ allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://ab-talks-hackathon-2026-cq355nwdv-hackathon-f62e.vercel.app",
+    "https://ab-talks-hackathon-2026-xi.vercel.app",
+    "https://ab-talks-hackathon-2026-xi.vercel.app/",
 ]
 
 allow_all = False
@@ -62,26 +64,26 @@ class PlanItemModel(BaseModel):
 class DayBreakdownModel(BaseModel):
     day: int
     title: str
-    assessment: str
+    assessment: str = ""
 
 class ComparisonModel(BaseModel):
     day: int
     title: str
-    predicted: str
-    evidence: str
-    assessment: str
-    gaps: List[str]
-    strengths: List[str]
-    next_actions: List[str]
+    predicted: str = "Core"
+    evidence: str = ""
+    assessment: str = "Confirmed"
+    gaps: List[str] = Field(default_factory=list)
+    strengths: List[str] = Field(default_factory=list)
+    next_actions: List[str] = Field(default_factory=list)
 
 # Response Model
 class FeedbackModel(BaseModel):
-    summary: str
-    strengths: List[str]
-    gaps: List[str]
-    next: List[str]
+    summary: str = "Completed the technical interview across multiple curriculum topics."
+    strengths: List[str] = Field(default_factory=list)
+    gaps: List[str] = Field(default_factory=list)
+    next: List[str] = Field(default_factory=list)
     breakdown: Optional[List[DayBreakdownModel]] = None
-    readiness: Optional[str] = None
+    readiness: Optional[str] = "Interview Ready"
     comparisons: Optional[List[ComparisonModel]] = None
 
 class InterviewResponse(BaseModel):
