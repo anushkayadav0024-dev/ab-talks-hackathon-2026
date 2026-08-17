@@ -2,7 +2,8 @@ import os
 import json
 import logging
 from typing import Dict, List, Any, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +377,8 @@ async def call_llm(
     Call the Google Gemini model (gemini-1.5-flash-latest) to get the next interview turn.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        api_key = api_key.strip().strip("'\"")
     if not api_key:
         logger.warning("GEMINI_API_KEY environment variable is not set. Using local personalized question generator.")
         
@@ -608,33 +611,36 @@ async def call_llm(
     for msg in history:
         # Map user/assistant to Gemini roles
         role = "user" if msg["role"] == "user" else "model"
-        gemini_messages.append({
-            "role": role,
-            "parts": [msg["content"]]
-        })
+        gemini_messages.append(
+            types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=msg["content"])]
+            )
+        )
 
     # If the history is empty, add a starting prompt to kick off the conversation
     if not gemini_messages:
-        gemini_messages.append({
-            "role": "user",
-            "parts": ["Hi, I am ready to start the interview."]
-        })
+        gemini_messages.append(
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="Hi, I am ready to start the interview.")]
+            )
+        )
 
     try:
-        # Configure Google GenAI SDK
-        genai.configure(api_key=api_key)
+        # Configure Google GenAI SDK Client
+        client = genai.Client(api_key=api_key)
         
-        # Initialize model with system instruction and JSON output constraint
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            generation_config={
-                "temperature": 0.7,
-                "response_mime_type": "application/json"
-            },
-            system_instruction=system_prompt
+        # Call Gemini model asynchronously
+        response = await client.aio.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=gemini_messages,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                response_mime_type="application/json",
+                system_instruction=system_prompt,
+            )
         )
-        
-        response = await model.generate_content_async(contents=gemini_messages)
         
         raw_content = response.text
         logger.info(f"Raw LLM response: {raw_content}")
@@ -643,7 +649,12 @@ async def call_llm(
         return parsed_response
         
     except Exception as e:
-        logger.error(f"Error calling LLM: {e}")
+        logger.error("Error calling Gemini API:", exc_info=True)
+        if hasattr(e, 'status_code'):
+            logger.error(f"Gemini API status code: {e.status_code}")
+        elif hasattr(e, 'code'):
+            logger.error(f"Gemini API error code: {e.code}")
+        
         # Return a fallback JSON response on error
         return {
             "reply": "I'm sorry, I encountered a technical issue. Let's continue. Can you tell me more about your recent project?",
