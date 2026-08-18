@@ -689,7 +689,7 @@ async def call_llm(
         try:
             # First attempt
             response = await client.aio.models.generate_content(
-                model="gemini-3.5-flash",
+                model="gemini-2.5-flash",
                 contents=gemini_messages,
                 config=config
             )
@@ -725,7 +725,7 @@ async def call_llm(
             
             # Retry attempt
             retry_response = await client.aio.models.generate_content(
-                model="gemini-3.5-flash",
+                model="gemini-2.5-flash",
                 contents=correction_messages,
                 config=config
             )
